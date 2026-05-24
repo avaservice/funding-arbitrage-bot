@@ -1,47 +1,39 @@
 import { NextResponse } from 'next/server';
-import ccxt from 'ccxt';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const mode = searchParams.get('mode') || 'testnet';
 
   try {
-    const exchange = new ccxt.bybit({
-      apiKey: process.env.NEXT_PUBLIC_BYBIT_API_KEY,
-      secret: process.env.NEXT_PUBLIC_BYBIT_API_SECRET,
-      enableRateLimit: true,
+    // Публічний endpoint Bybit (не потребує API ключів)
+    const response = await fetch('https://api.bybit.com/v5/market/funding/history?category=linear&limit=50', {
+      cache: 'no-store'
     });
 
-    // Використовуємо Testnet якщо вказано
-    if (mode === 'testnet') {
-      exchange.setSandboxMode(true);
+    const data = await response.json();
+
+    if (!data.result || !data.result.list) {
+      throw new Error('No data from Bybit');
     }
 
-    const markets = await exchange.loadMarkets();
-    const symbols = Object.keys(markets)
-      .filter(s => s.includes('USDT') && !s.includes('USDC'))
-      .slice(0, 50);
-
-    const fundingRates = await exchange.fetchFundingRates(symbols);
-
-    const result = Object.entries(fundingRates).map(([symbol, data]: any) => ({
-      symbol: symbol.replace(':USDT', ''),
-      fundingRate: parseFloat((data.fundingRate * 100).toFixed(4)),
-      predictedRate: parseFloat((data.predictedFundingRate * 100 || 0).toFixed(4)),
-      timestamp: new Date(data.timestamp).toLocaleTimeString('uk-UA'),
+    const formatted = data.result.list.map((item: any) => ({
+      symbol: item.symbol.replace('USDT', ''),
+      fundingRate: parseFloat((parseFloat(item.fundingRate) * 100).toFixed(4)),
+      predictedRate: 0, // Bybit не завжди повертає predicted в цьому ендпоінті
+      timestamp: new Date(parseInt(item.fundingTime)).toLocaleTimeString('uk-UA')
     }));
 
     return NextResponse.json({
       success: true,
       mode,
-      data: result.sort((a, b) => b.fundingRate - a.fundingRate)
+      data: formatted
     });
 
   } catch (error: any) {
-    console.error('Bybit API Error:', error);
+    console.error('Bybit Error:', error);
     return NextResponse.json({
       success: false,
-      error: error.message || 'Помилка підключення до Bybit'
+      error: error.message || 'Не вдалося отримати дані'
     }, { status: 500 });
   }
 }
