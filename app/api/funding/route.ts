@@ -5,35 +5,34 @@ export async function GET(request: Request) {
   const mode = searchParams.get('mode') || 'testnet';
 
   try {
-    // Публічний endpoint Bybit (не потребує API ключів)
-    const response = await fetch('https://api.bybit.com/v5/market/funding/history?category=linear&limit=50', {
-      cache: 'no-store'
-    });
+    // Публічний endpoint Bybit (не потребує ключів)
+    const response = await fetch(
+      'https://api.bybit.com/v5/market/funding/history?category=linear&limit=100', 
+      { cache: 'no-store' }
+    );
+
+    if (!response.ok) throw new Error('Bybit API error');
 
     const data = await response.json();
-
-    if (!data.result || !data.result.list) {
-      throw new Error('No data from Bybit');
-    }
 
     const formatted = data.result.list.map((item: any) => ({
       symbol: item.symbol.replace('USDT', ''),
       fundingRate: parseFloat((parseFloat(item.fundingRate) * 100).toFixed(4)),
-      predictedRate: 0, // Bybit не завжди повертає predicted в цьому ендпоінті
+      predictedRate: 0,
       timestamp: new Date(parseInt(item.fundingTime)).toLocaleTimeString('uk-UA')
     }));
 
     return NextResponse.json({
       success: true,
       mode,
-      data: formatted
+      data: formatted.slice(0, 30)
     });
 
   } catch (error: any) {
-    console.error('Bybit Error:', error);
+    console.error(error);
     return NextResponse.json({
       success: false,
-      error: error.message || 'Не вдалося отримати дані'
+      error: 'Не вдалося отримати дані з Bybit. Спробуйте пізніше.'
     }, { status: 500 });
   }
 }
