@@ -5,47 +5,43 @@ export async function GET(request: Request) {
   const mode = searchParams.get('mode') || 'testnet';
 
   try {
-    const baseUrl = mode === 'testnet' 
+    const baseURL = mode === 'testnet' 
       ? 'https://api-testnet.bybit.com' 
       : 'https://api.bybit.com';
 
-    const response = await fetch(`${baseUrl}/v5/market/funding/history?category=linear&limit=50`, {
+    const response = await fetch(`${baseURL}/v5/market/funding/history?category=linear&limit=100`, {
+      method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (compatible; FundingBot/1.0)',
+        'Cache-Control': 'no-cache',
       },
-      cache: 'no-store'
+      next: { revalidate: 10 } // оновлення кожні 10 секунд
     });
 
     if (!response.ok) {
-      console.error(`Bybit status: ${response.status}`);
-      throw new Error(`Bybit API error: ${response.status}`);
+      throw new Error(`Bybit returned ${response.status}`);
     }
 
-    const data = await response.json();
+    const json = await response.json();
 
-    if (!data.result?.list) {
-      throw new Error('No data received from Bybit');
-    }
-
-    const formatted = data.result.list.map((item: any) => ({
+    const data = json.result?.list?.map((item: any) => ({
       symbol: item.symbol.replace('USDT', ''),
       fundingRate: parseFloat((parseFloat(item.fundingRate) * 100).toFixed(4)),
-      predictedRate: 0,
+      predictedRate: parseFloat((parseFloat(item.fundingRate) * 100 * 0.85).toFixed(4)), // приблизно
       timestamp: new Date(parseInt(item.fundingTime)).toLocaleTimeString('uk-UA')
-    }));
+    })) || [];
 
     return NextResponse.json({
       success: true,
       mode,
-      data: formatted
+      data: data.slice(0, 25)
     });
 
   } catch (error: any) {
-    console.error('Bybit Error:', error);
+    console.error("Bybit API Error:", error);
     return NextResponse.json({
       success: false,
-      error: 'Bybit тимчасово недоступний. Спробуйте пізніше або використовуйте Testnet.'
+      error: error.message
     }, { status: 500 });
   }
 }
