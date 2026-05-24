@@ -1,44 +1,44 @@
 import { NextResponse } from 'next/server';
+import ccxt from 'ccxt';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const mode = searchParams.get('mode') || 'testnet';
 
   try {
-    const baseURL = mode === 'testnet' 
-      ? 'https://api-testnet.bybit.com' 
-      : 'https://api.bybit.com';
-
-    const response = await fetch(`${baseURL}/v5/market/funding/history?category=linear&limit=100`, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; FundingBot/1.0)',
-        'Cache-Control': 'no-cache',
-      },
-      next: { revalidate: 10 } // оновлення кожні 10 секунд
+    const exchange = new ccxt.bybit({
+      apiKey: process.env.NEXT_PUBLIC_BYBIT_API_KEY,
+      secret: process.env.NEXT_PUBLIC_BYBIT_API_SECRET,
+      enableRateLimit: true,
+      options: { defaultType: 'future' }
     });
 
-    if (!response.ok) {
-      throw new Error(`Bybit returned ${response.status}`);
+    if (mode === 'testnet') {
+      exchange.setSandboxMode(true);
     }
 
-    const json = await response.json();
+    // Отримуємо funding rates
+    const fundingRates = await exchange.fetchFundingRates();
 
-    const data = json.result?.list?.map((item: any) => ({
-      symbol: item.symbol.replace('USDT', ''),
-      fundingRate: parseFloat((parseFloat(item.fundingRate) * 100).toFixed(4)),
-      predictedRate: parseFloat((parseFloat(item.fundingRate) * 100 * 0.85).toFixed(4)), // приблизно
-      timestamp: new Date(parseInt(item.fundingTime)).toLocaleTimeString('uk-UA')
-    })) || [];
+    const result = Object.entries(fundingRates)
+      .filter(([symbol]) => symbol.includes('USDT'))
+      .map(([symbol, data]: any) => ({
+        symbol: symbol.replace(':USDT', ''),
+        fundingRate: parseFloat((data.fundingRate * 100).toFixed(4)),
+        predictedRate: parseFloat((data.predictedFundingRate * 100 || 0).toFixed(4)),
+        timestamp: new Date(data.timestamp).toLocaleTimeString('uk-UA'),
+        nextFundingTime: new Date(data.nextFundingTime).toLocaleTimeString('uk-UA')
+      }))
+      .sort((a, b) => Math.abs(b.fundingRate) - Math.abs(a.fundingRate));
 
     return NextResponse.json({
       success: true,
       mode,
-      data: data.slice(0, 25)
+      data: result.slice(0, 30)
     });
 
   } catch (error: any) {
-    console.error("Bybit API Error:", error);
+    console.error('Bybit Error:', error);
     return NextResponse.json({
       success: false,
       error: error.message
