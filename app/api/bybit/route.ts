@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
-const BASE_URL = "https://api.bybit.com"; // один і той самий для demo та real
+const BASE_URL = "https://api.bybit.com";
 const API_KEY = process.env.BYBIT_API_KEY!;
 const API_SECRET = process.env.BYBIT_API_SECRET!;
 
@@ -34,52 +34,18 @@ async function getBalance() {
   });
 }
 
-async function getPositions() {
-  return await privateRequest("/v5/position/list", {
-    category: "linear",
-    symbol: "BTCUSDT",
-  });
-}
-
-async function placeOrder(amountUSDT: number, entryPrice: number) {
-  const stopLossPrice = (entryPrice * 0.98).toFixed(2);   // -2%
-  const takeProfitPrice = (entryPrice * 1.05).toFixed(2); // +5%
-
-  return await privateRequest("/v5/order/create", {
-    category: "linear",
-    symbol: "BTCUSDT",
-    side: "Buy",
-    orderType: "Market",
-    qty: amountUSDT.toString(),
-    timeInForce: "GTC",
-    stopLoss: stopLossPrice,
-    takeProfit: takeProfitPrice,
-  });
-}
-
 export async function GET() {
   try {
     const balanceData = await getBalance();
-    const usdtBalance = parseFloat(balanceData.result.list[0].coin[0].walletBalance);
-
-    const tradeAmount = usdtBalance * 0.1;
-    const entryPrice = 65000; // для прикладу
-
-    const order = await placeOrder(tradeAmount, entryPrice);
-    const positions = await getPositions();
-
     return NextResponse.json({
       success: true,
-      balance: usdtBalance,
-      tradeAmount,
-      entryPrice,
-      stopLoss: (entryPrice * 0.98).toFixed(2),
-      takeProfit: (entryPrice * 1.05).toFixed(2),
-      order,
-      positions,
+      balanceData,
     });
   } catch (error) {
     console.error("Bybit Error:", error);
-    return NextResponse.json({ success: false, error: "API error" });
+    return NextResponse.json({
+      success: false,
+      error: "Не вдалося отримати баланс",
+    });
   }
 }
