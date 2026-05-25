@@ -2,7 +2,6 @@
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    domains: ['images.prom.ua', 'via.placeholder.com'],
     remotePatterns: [
       {
         protocol: 'https',
@@ -10,6 +9,6 @@ const nextConfig = {
       },
     ],
   },
-}
+};
 
-export default nextConfig
+export default nextConfig;
