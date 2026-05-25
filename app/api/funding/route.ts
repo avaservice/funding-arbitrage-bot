@@ -1,47 +1,72 @@
 import { NextResponse } from 'next/server';
-import ccxt from 'ccxt';
+
+const BYBIT_MAINNET_URLS = [
+  "https://api.bybit.com",
+  "https://api.bytick.com",
+];
+
+const BYBIT_DEMO_URLS = [
+  "https://api-demo.bybit.com",
+  "https://api-demo.bytick.com",
+];
+
+async function fetchBybit(path: string, mode: string = 'demo'): Promise<any> {
+  const urls = mode === 'demo' ? BYBIT_DEMO_URLS : BYBIT_MAINNET_URLS;
+
+  for (const baseUrl of urls) {
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        headers: { 
+          'Content-Type': 'application/json',
+          'User-Agent': 'CapustaArbitrageBot/1.0'
+        },
+        cache: 'no-store'
+      });
+
+      if (response.status === 403) {
+        console.warn(`403 blocked at ${baseUrl}, trying next...`);
+        continue;
+      }
+
+      return await response.json();
+    } catch (e) {
+      console.warn(`Fetch failed for ${baseUrl}:`, e);
+      continue;
+    }
+  }
+
+  throw new Error('All Bybit endpoints unavailable');
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const mode = searchParams.get('mode') || 'testnet';
+  const mode = searchParams.get('mode') || 'demo';
 
   try {
-    const exchange = new ccxt.bybit({
-      apiKey: process.env.NEXT_PUBLIC_BYBIT_API_KEY,
-      secret: process.env.NEXT_PUBLIC_BYBIT_API_SECRET,
-      enableRateLimit: true,
-      options: { defaultType: 'future' }
-    });
+    const data = await fetchBybit(`/v5/market/funding/history?category=linear&limit=100`, mode);
 
-    if (mode === 'testnet') {
-      exchange.setSandboxMode(true);
+    if (data.retCode !== 0) {
+      throw new Error(data.retMsg || 'Bybit API error');
     }
 
-    // Отримуємо funding rates
-    const fundingRates = await exchange.fetchFundingRates();
-
-    const result = Object.entries(fundingRates)
-      .filter(([symbol]) => symbol.includes('USDT'))
-      .map(([symbol, data]: any) => ({
-        symbol: symbol.replace(':USDT', ''),
-        fundingRate: parseFloat((data.fundingRate * 100).toFixed(4)),
-        predictedRate: parseFloat((data.predictedFundingRate * 100 || 0).toFixed(4)),
-        timestamp: new Date(data.timestamp).toLocaleTimeString('uk-UA'),
-        nextFundingTime: new Date(data.nextFundingTime).toLocaleTimeString('uk-UA')
-      }))
-      .sort((a, b) => Math.abs(b.fundingRate) - Math.abs(a.fundingRate));
+    const formatted = data.result.list.map((item: any) => ({
+      symbol: item.symbol.replace('USDT', ''),
+      fundingRate: parseFloat((parseFloat(item.fundingRate) * 100).toFixed(4)),
+      predictedRate: parseFloat((parseFloat(item.fundingRate) * 100 * 0.9).toFixed(4)),
+      timestamp: new Date(parseInt(item.fundingTime)).toLocaleTimeString('uk-UA')
+    }));
 
     return NextResponse.json({
       success: true,
       mode,
-      data: result.slice(0, 30)
+      data: formatted.slice(0, 25)
     });
 
   } catch (error: any) {
     console.error('Bybit Error:', error);
     return NextResponse.json({
       success: false,
-      error: error.message
+      error: error.message || 'Bybit API недоступний'
     }, { status: 500 });
   }
 }
