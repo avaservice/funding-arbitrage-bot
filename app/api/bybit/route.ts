@@ -48,7 +48,6 @@ export async function GET() {
     // Позиції
     const positions = await makeBybitRequest("/v5/position/list", "GET", { category: "linear", settleCoin: "USDT" });
 
-    // Витягуємо баланс USDT
     let usdtBalance = 0;
     if (balanceData?.result?.list?.[0]) {
       const account = balanceData.result.list[0];
