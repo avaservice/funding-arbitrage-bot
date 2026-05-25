@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
-const BASE_URL = "https://api.bybit.com"; // один endpoint для реальних і тестових ключів
+const BASE_URL = "https://api.bybit.com";
 const API_KEY = process.env.BYBIT_API_KEY!;
 const API_SECRET = process.env.BYBIT_API_SECRET!;
 
@@ -42,20 +42,21 @@ async function makeBybitRequest(endpoint: string, method: string, params: Record
 
 export async function GET() {
   try {
-    // Баланс
-    const balanceData = await makeBybitRequest("/v5/account/wallet-balance", "GET", { accountType: "UNIFIED" });
-
-    // Позиції
-    const positions = await makeBybitRequest("/v5/position/list", "GET", { category: "linear", settleCoin: "USDT" });
-
+    // спробуємо UNIFIED і CONTRACT
     let usdtBalance = 0;
-    if (balanceData?.result?.list?.[0]) {
-      const account = balanceData.result.list[0];
-      const usdtCoin = account.coin?.find((c: any) => c.coin === "USDT");
-      if (usdtCoin) {
-        usdtBalance = parseFloat(usdtCoin.walletBalance) || 0;
+    for (const accountType of ["UNIFIED", "CONTRACT"]) {
+      const balanceData = await makeBybitRequest("/v5/account/wallet-balance", "GET", { accountType });
+      if (balanceData?.retCode === 0 && balanceData?.result?.list?.[0]) {
+        const account = balanceData.result.list[0];
+        const usdtCoin = account.coin?.find((c: any) => c.coin === "USDT");
+        if (usdtCoin) {
+          usdtBalance = parseFloat(usdtCoin.walletBalance) || 0;
+          break;
+        }
       }
     }
+
+    const positions = await makeBybitRequest("/v5/position/list", "GET", { category: "linear", settleCoin: "USDT" });
 
     return NextResponse.json({
       success: true,
