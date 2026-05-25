@@ -1,79 +1,32 @@
-import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 
-const BYBIT_API_URLS = [
-  "https://api.bybit.com",
-  "https://api.bytick.com",
-  "https://api-demo.bybit.com",
-  "https://api-demo.bytick.com"
-];
+const API_KEY = process.env.BYBIT_API_KEY!;
+const API_SECRET = process.env.BYBIT_API_SECRET!;
+const BASE_URL = 'https://api-testnet.bybit.com';
 
-async function fetchBybit(path: string) {
-  for (const baseUrl of BYBIT_API_URLS) {
-    try {
-      const response = await fetch(`${baseUrl}${path}`, {
-        headers: { 
-          'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (compatible; CapustaArbitrageBot/1.0)'
-        },
-        cache: 'no-store'
-      });
-
-      if (response.status === 403) {
-        console.log(`403 at ${baseUrl}`);
-        continue;
-      }
-
-      const data = await response.json();
-      if (data.retCode === 0) {
-        return data;
-      }
-    } catch (e) {
-      console.log(`Failed ${baseUrl}`);
-      continue;
-    }
-  }
-  return null;
+function signRequest(params: Record<string,string>) {
+  const ordered = Object.keys(params).sort().map(k=>`${k}=${params[k]}`).join('&');
+  return crypto.createHmac('sha256', API_SECRET).update(ordered).digest('hex');
 }
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const mode = searchParams.get('mode') || 'demo';
+export async function placeOrder() {
+  const params: Record<string,string> = {
+    category:'linear',
+    symbol:'BTCUSDT',
+    side:'Buy',
+    orderType:'Limit',
+    qty:'0.001',
+    price:'65000',
+    timeInForce:'GTC',
+    api_key:API_KEY,
+    timestamp:Date.now().toString(),
+  };
+  params['sign'] = signRequest(params);
 
-  try {
-    const data = await fetchBybit(`/v5/market/funding/history?category=linear&limit=100`);
-
-    if (!data || !data.result?.list) {
-      throw new Error("No data from Bybit");
-    }
-
-    const formatted = data.result.list.slice(0, 30).map((item: any) => ({
-      symbol: item.symbol.replace('USDT', ''),
-      fundingRate: parseFloat((parseFloat(item.fundingRate) * 100).toFixed(4)),
-      predictedRate: parseFloat((parseFloat(item.fundingRate) * 100 * 0.9).toFixed(4)),
-      timestamp: new Date(parseInt(item.fundingTime)).toLocaleTimeString('uk-UA')
-    }));
-
-    return NextResponse.json({
-      success: true,
-      mode,
-      data: formatted
-    });
-
-  } catch (error) {
-    console.error("Bybit Error:", error);
-    
-    // Фінальна заглушка, щоб сайт працював
-    const fallback = [
-      { symbol: "BTC", fundingRate: 0.0125, predictedRate: 0.0118, timestamp: "12:30" },
-      { symbol: "ETH", fundingRate: -0.0054, predictedRate: -0.0061, timestamp: "12:30" },
-      { symbol: "SOL", fundingRate: 0.0234, predictedRate: 0.0219, timestamp: "12:30" },
-    ];
-
-    return NextResponse.json({
-      success: true,
-      mode,
-      data: fallback,
-      note: "Bybit блокує Vercel. Використовуємо тестові дані."
-    });
-  }
+  const res = await fetch(`${BASE_URL}/v5/order/create`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(params)
+  });
+  console.log(await res.json());
 }
