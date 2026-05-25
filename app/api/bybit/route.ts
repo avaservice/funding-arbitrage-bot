@@ -42,12 +42,15 @@ async function makeBybitRequest(endpoint: string, method: string, params: Record
 
 export async function GET() {
   try {
-    // спробуємо UNIFIED і CONTRACT
     let usdtBalance = 0;
+    let balanceData: any = null;
+
+    // пробуємо UNIFIED і CONTRACT
     for (const accountType of ["UNIFIED", "CONTRACT"]) {
-      const balanceData = await makeBybitRequest("/v5/account/wallet-balance", "GET", { accountType });
-      if (balanceData?.retCode === 0 && balanceData?.result?.list?.[0]) {
-        const account = balanceData.result.list[0];
+      const data = await makeBybitRequest("/v5/account/wallet-balance", "GET", { accountType });
+      if (data?.retCode === 0 && data?.result?.list?.[0]) {
+        balanceData = data;
+        const account = data.result.list[0];
         const usdtCoin = account.coin?.find((c: any) => c.coin === "USDT");
         if (usdtCoin) {
           usdtBalance = parseFloat(usdtCoin.walletBalance) || 0;
@@ -61,7 +64,8 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       balance: usdtBalance,
-      positions: positions?.result?.list || [],
+      balanceRaw: balanceData,
+      positionsRaw: positions,
     });
   } catch (error) {
     console.error("Bybit Error:", error);
